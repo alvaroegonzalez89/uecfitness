@@ -166,6 +166,13 @@ tr:hover td{background:var(--surface2);}
 </style>
 </head>
 <body>
+<script>
+// Evita el parpadeo del login mientras Firebase todavía está chequeando la sesión:
+// si la URL trae ?inscripcion=1, ocultamos el login YA, sin esperar a Firebase.
+if(new URLSearchParams(window.location.search).get('inscripcion') === '1'){
+  document.write('<style>#login-screen{display:none !important;}</style>');
+}
+</script>
 
 <!-- ══════════ LOGIN ══════════ -->
 <div id="login-screen">
@@ -233,7 +240,6 @@ tr:hover td{background:var(--surface2);}
           <option value="nombre-desc">Nombre (Z-A)</option>
           <option value="actividad">Actividad</option>
         </select>
-        <button class="btn btn-outline btn-sm" onclick="cargarSocios(true)" title="Vuelve a traer los socios desde Firestore por si otro admin cargó/editó algo mientras vos tenías el panel abierto">↻ Actualizar</button>
       </div>
       <div class="card">
         <div class="table-wrap"><table id="tabla-socios">
