@@ -247,7 +247,7 @@ tr:hover td{background:var(--surface2);}
 
     <!-- INSCRIPCIONES -->
     <div class="view" id="view-inscripciones">
-      <div class="topbar"><h1>Inscripciones</h1></div>
+      <div class="topbar"><h1>Inscripciones</h1><button class="btn btn-outline" onclick="copiarLinkInscripcion()">🔗 Copiar link del formulario</button></div>
       <div class="card">
         <div class="table-wrap"><table id="tabla-inscripciones">
           <thead><tr><th>Fecha</th><th>Nombre</th><th>Teléfono</th><th>Actividad de interés</th><th>Tipo</th><th>Estado</th><th></th></tr></thead>
@@ -788,6 +788,15 @@ function abrirRecordatorioMasivo(){
     }).join("");
   }
   abrirModal('modal-recordatorio');
+}
+
+function copiarLinkInscripcion(){
+  const url = window.location.origin + window.location.pathname + "?inscripcion=1";
+  navigator.clipboard.writeText(url).then(()=>{
+    toast("Link copiado: " + url);
+  }).catch(()=>{
+    prompt("Copiá el link del formulario:", url);
+  });
 }
 
 /* ══════════ INSCRIPCIONES (panel admin) ══════════ */
