@@ -521,6 +521,8 @@ const DEFAULT_CONFIG = {
 let CONFIG = null;
 let sociosCache = [];
 let movimientosCache = [];
+let inscripcionesCache = [];
+let origenInscripcionId = null;
 let tipoPublicoActual = "particular";
 
 /* ══════════ UTILIDADES ══════════ */
@@ -727,6 +729,7 @@ function nombreActividad(id){
 }
 
 function abrirModalSocio(id){
+  origenInscripcionId = null; // si viene de confirmarInscripcion(), se vuelve a setear después de este llamado
   document.getElementById('modal-socio-titulo').textContent = id ? 'Editar socio' : 'Nuevo socio';
   document.getElementById('ms-id').value = id || "";
   if(id){
@@ -801,6 +804,10 @@ async function guardarSocio(){
     data.fechaAlta = firebase.firestore.FieldValue.serverTimestamp();
     data.pagos = {};
     await db.collection('socios').add(data);
+    if(origenInscripcionId){
+      await marcarAtendido(origenInscripcionId);
+      origenInscripcionId = null;
+    }
   }
   cerrarModal('modal-socio');
   await cargarSocios(true);
@@ -1010,6 +1017,7 @@ function escucharInscripciones(){
   // Sin filtro por uid en la consulta (proyecto de un solo cliente, regla simple) — evita el bug de Indika.
   db.collection('inscripciones').orderBy('fecha','desc').onSnapshot(snap=>{
     const items = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    inscripcionesCache = items;
     renderInscripciones(items);
     const sinAtender = items.filter(i=>!i.atendido).length;
     const badge = document.getElementById('badge-insc');
@@ -1035,7 +1043,7 @@ function renderInscripciones(items){
       <td>${i.atendido ? '<span class="badge badge-ok">Confirmada</span>' : '<span class="badge badge-pend">Pendiente</span>'}</td>
       <td style="white-space:nowrap;display:flex;gap:6px;">
         <a class="btn btn-outline btn-sm" target="_blank" href="https://wa.me/${formatTelWA(i.telefono)}">WhatsApp</a>
-        ${!i.atendido?`<button class="btn btn-success btn-sm" onclick="marcarAtendido('${i.id}')">Confirmar</button>`:''}
+        ${!i.atendido?`<button class="btn btn-success btn-sm" onclick="confirmarInscripcion('${i.id}')">Confirmar</button>`:''}
       </td>
     </tr>`;
   }).join("") || `<tr><td colspan="7" class="muted">Todavía no hay inscripciones.</td></tr>`;
@@ -1044,6 +1052,26 @@ function renderInscripciones(items){
 async function marcarAtendido(id){
   await db.collection('inscripciones').doc(id).set({atendido:true}, {merge:true});
   toast("Inscripción confirmada ✓");
+}
+
+function confirmarInscripcion(id){
+  const insc = inscripcionesCache.find(x=>x.id===id);
+  if(!insc){ toast("No encontré esa inscripción, actualizá la página e intentá de nuevo"); return; }
+  abrirModalSocio(); // deja el formulario en blanco, modo "nuevo socio"
+  document.getElementById('ms-nombre').value = insc.nombre || "";
+  document.getElementById('ms-dni').value = insc.dni || "";
+  document.getElementById('ms-telefono').value = insc.telefono || "";
+  document.getElementById('ms-tipo').value = insc.tipoSocio || "particular";
+  if(insc.actividadId){
+    document.getElementById('ms-actividad').value = insc.actividadId;
+    actualizarFrecuenciasModal();
+    if(insc.frecuencia !== undefined){
+      document.getElementById('ms-frecuencia').value = insc.frecuencia;
+      actualizarPrecioModal();
+    }
+  }
+  document.getElementById('modal-socio-titulo').textContent = 'Confirmar inscripción de ' + (insc.nombre || '');
+  origenInscripcionId = id; // al guardar este socio, se marca la inscripción como confirmada
 }
 
 /* ══════════ DASHBOARD ══════════ */
@@ -1167,6 +1195,8 @@ async function enviarInscripcion(){
     dni: document.getElementById('pf-dni').value.trim(),
     telefono,
     actividadInteres: seleccionPublica.nombre + " — " + seleccionPublica.frecuenciaLabel,
+    actividadId: seleccionPublica.actividadId,
+    frecuencia: seleccionPublica.frecuenciaVal,
     tipoSocio: seleccionPublica.actividadId==='bodyfitness' ? 'particular' : tipoPublicoActual,
     mensaje: document.getElementById('pf-mensaje').value.trim(),
     fecha: new Date().toISOString(),
