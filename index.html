@@ -1043,7 +1043,9 @@ function renderInscripciones(items){
       <td>${i.atendido ? '<span class="badge badge-ok">Confirmada</span>' : '<span class="badge badge-pend">Pendiente</span>'}</td>
       <td style="white-space:nowrap;display:flex;gap:6px;">
         <a class="btn btn-outline btn-sm" target="_blank" href="https://wa.me/${formatTelWA(i.telefono)}">WhatsApp</a>
-        ${!i.atendido?`<button class="btn btn-success btn-sm" onclick="confirmarInscripcion('${i.id}')">Confirmar</button>`:''}
+        ${!i.atendido
+          ? `<button class="btn btn-success btn-sm" onclick="confirmarInscripcion('${i.id}')">Confirmar</button>`
+          : `<button class="btn btn-outline btn-sm" onclick="reabrirInscripcion('${i.id}')">Reabrir</button>`}
       </td>
     </tr>`;
   }).join("") || `<tr><td colspan="7" class="muted">Todavía no hay inscripciones.</td></tr>`;
@@ -1052,6 +1054,11 @@ function renderInscripciones(items){
 async function marcarAtendido(id){
   await db.collection('inscripciones').doc(id).set({atendido:true}, {merge:true});
   toast("Inscripción confirmada ✓");
+}
+
+async function reabrirInscripcion(id){
+  await db.collection('inscripciones').doc(id).set({atendido:false}, {merge:true});
+  toast("Inscripción vuelta a pendiente ✓");
 }
 
 function confirmarInscripcion(id){
