@@ -236,8 +236,8 @@ if(new URLSearchParams(window.location.search).get('inscripcion') === '1'){
         <input class="fi" id="buscar-socio" placeholder="Buscar por nombre o DNI..." oninput="renderSocios()"/>
         <select class="fi" id="filtro-actividad" style="max-width:220px" onchange="renderSocios()"><option value="">Todas las actividades</option></select>
         <select class="fi" id="orden-socios" style="max-width:180px" onchange="renderSocios()">
-          <option value="nombre-asc">Nombre (A-Z)</option>
-          <option value="nombre-desc">Nombre (Z-A)</option>
+          <option value="nombre-asc">Apellido (A-Z)</option>
+          <option value="nombre-desc">Apellido (Z-A)</option>
           <option value="actividad">Actividad</option>
         </select>
       </div>
@@ -267,8 +267,8 @@ if(new URLSearchParams(window.location.search).get('inscripcion') === '1'){
           <option value="pendiente">Pendiente</option>
         </select>
         <select class="fi" id="orden-cuotas" style="max-width:180px" onchange="renderCuotas()">
-          <option value="nombre-asc">Nombre (A-Z)</option>
-          <option value="nombre-desc">Nombre (Z-A)</option>
+          <option value="nombre-asc">Apellido (A-Z)</option>
+          <option value="nombre-desc">Apellido (Z-A)</option>
           <option value="actividad">Actividad</option>
         </select>
       </div>
@@ -358,7 +358,10 @@ if(new URLSearchParams(window.location.search).get('inscripcion') === '1'){
 
     <div class="pub-form" id="pub-datos-wrap">
       <h3>Tus datos</h3>
-      <div class="fg"><label class="fl">Nombre y apellido</label><input class="fi" id="pf-nombre"/></div>
+      <div class="row2">
+        <div class="fg"><label class="fl">Apellido</label><input class="fi" id="pf-apellido"/></div>
+        <div class="fg"><label class="fl">Nombre</label><input class="fi" id="pf-nombre"/></div>
+      </div>
       <div class="row2">
         <div class="fg"><label class="fl">DNI</label><input class="fi" id="pf-dni"/></div>
         <div class="fg"><label class="fl">Teléfono</label><input class="fi" id="pf-telefono" placeholder="26xxxxxxxx"/></div>
@@ -393,7 +396,10 @@ if(new URLSearchParams(window.location.search).get('inscripcion') === '1'){
     <span class="modal-close" onclick="cerrarModal('modal-socio')">×</span>
     <h2 id="modal-socio-titulo">Nuevo socio</h2>
     <input type="hidden" id="ms-id"/>
-    <div class="fg"><label class="fl">Nombre y apellido</label><input class="fi" id="ms-nombre"/></div>
+    <div class="row2">
+      <div class="fg"><label class="fl">Apellido</label><input class="fi" id="ms-apellido"/></div>
+      <div class="fg"><label class="fl">Nombre</label><input class="fi" id="ms-nombre"/></div>
+    </div>
     <div class="row2">
       <div class="fg"><label class="fl">DNI</label><input class="fi" id="ms-dni"/></div>
       <div class="fg"><label class="fl">Teléfono (WhatsApp)</label><input class="fi" id="ms-telefono" placeholder="26xxxxxxxx"/></div>
@@ -547,6 +553,19 @@ function labelFrecuencia(v){
   if(v==="todos") return "Todos los días";
   return v+" veces x semana";
 }
+// Muestra "Apellido, Nombre". Los registros viejos (que tenían todo junto en un solo
+// campo) se muestran tal cual estaban, sin romperse.
+function nombreCompleto(p){
+  if(p.apellido) return (p.apellido + ", " + (p.nombre||"")).replace(/,\s*$/,"");
+  return p.nombre || "";
+}
+// Clave para ordenar alfabéticamente por apellido.
+function claveOrden(p){
+  if(p.apellido) return (p.apellido + " " + (p.nombre||"")).toLowerCase();
+  // Registro viejo sin apellido separado: usamos la última palabra como apellido.
+  const partes = (p.nombre||"").trim().split(/\s+/);
+  return (partes.length>1 ? partes[partes.length-1] + " " + partes.slice(0,-1).join(" ") : (p.nombre||"")).toLowerCase();
+}
 function cerrarModal(id){ document.getElementById(id).classList.remove('active'); }
 function abrirModal(id){ document.getElementById(id).classList.add('active'); }
 
@@ -695,21 +714,21 @@ function renderSocios(){
   const mesId = mesActualId();
   const tbody = document.querySelector('#tabla-socios tbody');
   let lista = sociosCache.filter(s=>{
-    const matchTexto = !buscar || (s.nombre||"").toLowerCase().includes(buscar) || (s.dni||"").includes(buscar);
+    const matchTexto = !buscar || nombreCompleto(s).toLowerCase().includes(buscar) || (s.dni||"").includes(buscar);
     const matchAct = !filtroAct || s.actividadId===filtroAct;
     return matchTexto && matchAct;
   });
   lista.sort((a,b)=>{
     const orden = document.getElementById('orden-socios').value;
-    if(orden==='nombre-desc') return (b.nombre||"").localeCompare(a.nombre||"");
-    if(orden==='actividad') return nombreActividad(a.actividadId).localeCompare(nombreActividad(b.actividadId)) || (a.nombre||"").localeCompare(b.nombre||"");
-    return (a.nombre||"").localeCompare(b.nombre||"");
+    if(orden==='nombre-desc') return claveOrden(b).localeCompare(claveOrden(a));
+    if(orden==='actividad') return nombreActividad(a.actividadId).localeCompare(nombreActividad(b.actividadId)) || claveOrden(a).localeCompare(claveOrden(b));
+    return claveOrden(a).localeCompare(claveOrden(b));
   });
   tbody.innerHTML = lista.map(s=>{
     const pagoMes = (s.pagos && s.pagos[mesId]) ? s.pagos[mesId] : null;
     const actNombre = nombreActividad(s.actividadId);
     return `<tr>
-      <td>${s.nombre||""}</td>
+      <td>${nombreCompleto(s)}</td>
       <td>${s.dni||""}</td>
       <td>${actNombre} <span class="chip">${labelFrecuencia(s.frecuencia)}</span></td>
       <td><span class="badge ${s.tipoSocio==='afiliado'?'badge-af':'badge-part'}">${s.tipoSocio==='afiliado'?'Afiliado UEC':'Particular'}</span></td>
@@ -734,6 +753,7 @@ function abrirModalSocio(id){
   document.getElementById('ms-id').value = id || "";
   if(id){
     const s = sociosCache.find(x=>x.id===id);
+    document.getElementById('ms-apellido').value = s.apellido||"";
     document.getElementById('ms-nombre').value = s.nombre||"";
     document.getElementById('ms-dni').value = s.dni||"";
     document.getElementById('ms-telefono').value = s.telefono||"";
@@ -744,6 +764,7 @@ function abrirModalSocio(id){
     document.getElementById('ms-precio').value = s.precioMensual||0;
     document.getElementById('ms-activo').value = String(s.activo!==false);
   } else {
+    document.getElementById('ms-apellido').value = "";
     document.getElementById('ms-nombre').value = "";
     document.getElementById('ms-dni').value = "";
     document.getElementById('ms-telefono').value = "";
@@ -785,9 +806,11 @@ function actualizarPrecioModal(){
 
 async function guardarSocio(){
   const id = document.getElementById('ms-id').value;
+  const apellido = document.getElementById('ms-apellido').value.trim();
   const nombre = document.getElementById('ms-nombre').value.trim();
-  if(!nombre){ toast("Falta el nombre"); return; }
+  if(!apellido || !nombre){ toast("Completá apellido y nombre"); return; }
   const data = {
+    apellido,
     nombre,
     dni: document.getElementById('ms-dni').value.trim(),
     telefono: document.getElementById('ms-telefono').value.trim(),
@@ -825,22 +848,22 @@ function renderCuotas(){
   const tbody = document.querySelector('#tabla-cuotas tbody');
   let lista = sociosCache.filter(s=>{
     if(s.activo===false) return false;
-    const matchTexto = !buscar || (s.nombre||"").toLowerCase().includes(buscar) || (s.dni||"").includes(buscar);
+    const matchTexto = !buscar || nombreCompleto(s).toLowerCase().includes(buscar) || (s.dni||"").includes(buscar);
     const matchAct = !filtroAct || s.actividadId===filtroAct;
     const pagado = !!(s.pagos && s.pagos[mesId]);
     const matchEstado = !filtroEstado || (filtroEstado==='pagado'?pagado:!pagado);
     return matchTexto && matchAct && matchEstado;
   });
   lista.sort((a,b)=>{
-    if(orden==='nombre-desc') return (b.nombre||"").localeCompare(a.nombre||"");
-    if(orden==='actividad') return nombreActividad(a.actividadId).localeCompare(nombreActividad(b.actividadId)) || (a.nombre||"").localeCompare(b.nombre||"");
-    return (a.nombre||"").localeCompare(b.nombre||"");
+    if(orden==='nombre-desc') return claveOrden(b).localeCompare(claveOrden(a));
+    if(orden==='actividad') return nombreActividad(a.actividadId).localeCompare(nombreActividad(b.actividadId)) || claveOrden(a).localeCompare(claveOrden(b));
+    return claveOrden(a).localeCompare(claveOrden(b));
   });
   tbody.innerHTML = lista.map(s=>{
     const pago = s.pagos && s.pagos[mesId];
     const bloqueado = mesId < mesActualId(); // meses anteriores bloqueados para editar si ya se registró
     return `<tr>
-      <td>${s.nombre}</td>
+      <td>${nombreCompleto(s)}</td>
       <td>${nombreActividad(s.actividadId)}</td>
       <td>${formatMoneda(s.precioMensual)}</td>
       <td>${pago ? `<span class="badge badge-ok">Pagado (${pago.medio})</span>` : '<span class="badge badge-pend">Pendiente</span>'}</td>
@@ -856,7 +879,7 @@ function renderCuotas(){
 function abrirModalPago(socioId, mesId){
   const s = sociosCache.find(x=>x.id===socioId);
   document.getElementById('mp-socio-id').value = socioId;
-  document.getElementById('mp-socio-nombre').textContent = s.nombre + " — " + nombreActividad(s.actividadId);
+  document.getElementById('mp-socio-nombre').textContent = nombreCompleto(s) + " — " + nombreActividad(s.actividadId);
   document.getElementById('mp-mes').value = mesId;
   const pagoExistente = s.pagos && s.pagos[mesId];
   document.getElementById('mp-monto').value = pagoExistente ? pagoExistente.monto : s.precioMensual;
@@ -901,7 +924,7 @@ function abrirRecordatorioMasivo(){
     cont.innerHTML = pendientes.map(s=>{
       const msg = `¡Hola ${s.nombre}! Te recordamos que tenés pendiente el pago de tu cuota en ${CONFIG.nombreGimnasio} (${formatMoneda(s.precioMensual)}). Podés abonar en efectivo o por transferencia al alias ${CONFIG.alias}. ¡Te esperamos! 💪`;
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);">
-        <span>${s.nombre} <span class="chip">${formatMoneda(s.precioMensual)}</span></span>
+        <span>${nombreCompleto(s)} <span class="chip">${formatMoneda(s.precioMensual)}</span></span>
         <a class="btn btn-outline btn-sm" target="_blank" href="https://wa.me/${formatTelWA(s.telefono)}?text=${encodeURIComponent(msg)}">Enviar</a>
       </div>`;
     }).join("");
@@ -1036,7 +1059,7 @@ function renderInscripciones(items){
     const fecha = i.fecha ? new Date(i.fecha).toLocaleDateString('es-AR') : "-";
     return `<tr>
       <td>${fecha}</td>
-      <td>${i.nombre||""}</td>
+      <td>${nombreCompleto(i)}</td>
       <td>${i.telefono||""}</td>
       <td>${i.actividadInteres||""}</td>
       <td><span class="badge ${i.tipoSocio==='afiliado'?'badge-af':'badge-part'}">${i.tipoSocio==='afiliado'?'Afiliado UEC':'Particular'}</span></td>
@@ -1065,6 +1088,7 @@ function confirmarInscripcion(id){
   const insc = inscripcionesCache.find(x=>x.id===id);
   if(!insc){ toast("No encontré esa inscripción, actualizá la página e intentá de nuevo"); return; }
   abrirModalSocio(); // deja el formulario en blanco, modo "nuevo socio"
+  document.getElementById('ms-apellido').value = insc.apellido || "";
   document.getElementById('ms-nombre').value = insc.nombre || "";
   document.getElementById('ms-dni').value = insc.dni || "";
   document.getElementById('ms-telefono').value = insc.telefono || "";
@@ -1077,7 +1101,7 @@ function confirmarInscripcion(id){
       actualizarPrecioModal();
     }
   }
-  document.getElementById('modal-socio-titulo').textContent = 'Confirmar inscripción de ' + (insc.nombre || '');
+  document.getElementById('modal-socio-titulo').textContent = 'Confirmar inscripción de ' + nombreCompleto(insc);
   origenInscripcionId = id; // al guardar este socio, se marca la inscripción como confirmada
 }
 
@@ -1193,11 +1217,13 @@ function renderPlanesPublico(){
 }
 
 async function enviarInscripcion(){
+  const apellido = document.getElementById('pf-apellido').value.trim();
   const nombre = document.getElementById('pf-nombre').value.trim();
   const telefono = document.getElementById('pf-telefono').value.trim();
-  if(!nombre || !telefono){ toast("Completá al menos nombre y teléfono"); return; }
+  if(!apellido || !nombre || !telefono){ toast("Completá apellido, nombre y teléfono"); return; }
   if(!seleccionPublica){ toast("Elegí un plan de la lista antes de enviar"); return; }
   const data = {
+    apellido,
     nombre,
     dni: document.getElementById('pf-dni').value.trim(),
     telefono,
