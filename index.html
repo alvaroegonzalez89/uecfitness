@@ -417,6 +417,7 @@ if(new URLSearchParams(window.location.search).get('inscripcion') === '1'){
       <select class="fi" id="ms-activo"><option value="true">Activo</option><option value="false">Inactivo / dado de baja</option></select>
     </div>
     <button class="btn btn-primary btn-block" onclick="guardarSocio()">Guardar</button>
+    <button class="btn btn-danger btn-block hidden" id="ms-btn-eliminar" style="margin-top:10px;" onclick="eliminarSocio()">Eliminar socio</button>
   </div>
 </div>
 
@@ -763,6 +764,7 @@ function abrirModalSocio(id){
     document.getElementById('ms-frecuencia').value = s.frecuencia||"";
     document.getElementById('ms-precio').value = s.precioMensual||0;
     document.getElementById('ms-activo').value = String(s.activo!==false);
+    document.getElementById('ms-btn-eliminar').classList.remove('hidden');
   } else {
     document.getElementById('ms-apellido').value = "";
     document.getElementById('ms-nombre').value = "";
@@ -772,8 +774,22 @@ function abrirModalSocio(id){
     document.getElementById('ms-actividad').selectedIndex = 0;
     actualizarFrecuenciasModal();
     document.getElementById('ms-activo').value = "true";
+    document.getElementById('ms-btn-eliminar').classList.add('hidden');
   }
   abrirModal('modal-socio');
+}
+
+async function eliminarSocio(){
+  const id = document.getElementById('ms-id').value;
+  if(!id) return;
+  const s = sociosCache.find(x=>x.id===id);
+  if(!confirm(`¿Eliminar definitivamente a ${nombreCompleto(s)}? Se borra también su historial de pagos. Esta acción no se puede deshacer.`)) return;
+  await db.collection('socios').doc(id).delete();
+  sociosCache = sociosCache.filter(x=>x.id!==id);
+  cerrarModal('modal-socio');
+  renderSocios();
+  renderDashboard();
+  toast("Socio eliminado ✓");
 }
 
 function actualizarFrecuenciasModal(){
