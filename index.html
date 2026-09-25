@@ -865,7 +865,7 @@ function renderCuotas(){
     return `<tr>
       <td>${nombreCompleto(s)}</td>
       <td>${nombreActividad(s.actividadId)}</td>
-      <td>${formatMoneda(s.precioMensual)}</td>
+      <td>${pago ? formatMoneda(pago.monto) + (Number(pago.monto)!==Number(s.precioMensual) ? ` <span class="chip">cuota: ${formatMoneda(s.precioMensual)}</span>` : '') : formatMoneda(s.precioMensual)}</td>
       <td>${pago ? `<span class="badge badge-ok">Pagado (${pago.medio})</span>` : '<span class="badge badge-pend">Pendiente</span>'}</td>
       <td style="white-space:nowrap;display:flex;gap:6px;">
         ${pago
