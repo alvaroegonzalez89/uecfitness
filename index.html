@@ -93,6 +93,13 @@ textarea.fi{resize:vertical;min-height:70px;}
 .stat-card .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;margin-bottom:20px;}
 .card h3{font-size:15px;font-weight:500;margin-bottom:14px;}
+.bars-chart{display:flex;align-items:flex-end;gap:14px;height:190px;padding-top:10px;}
+.bars-chart .bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;}
+.bars-chart .bar{width:60%;max-width:46px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,var(--bordo2),var(--bordo));min-height:3px;transition:height .3s;}
+.bars-chart .bar-val{font-size:11px;color:var(--bordo);font-weight:600;margin-bottom:4px;white-space:nowrap;}
+.bars-chart .bar-label{font-size:10.5px;color:var(--muted);margin-top:8px;text-align:center;}
+.donut{width:116px;height:116px;border-radius:50%;flex-shrink:0;position:relative;}
+.donut::before{content:'';position:absolute;inset:16px;background:var(--surface);border-radius:50%;}
 
 /* ── TABLE ── */
 .table-wrap{overflow:auto;max-height:64vh;}
@@ -206,6 +213,7 @@ if(new URLSearchParams(window.location.search).get('inscripcion') === '1'){
     <div class="nav-item" data-view="socios" onclick="mostrarVista('socios')"><span class="ic">◆</span> Socios</div>
     <div class="nav-item" data-view="cuotas" onclick="mostrarVista('cuotas')"><span class="ic">◆</span> Cuotas</div>
     <div class="nav-item" data-view="finanzas" onclick="mostrarVista('finanzas')"><span class="ic">◆</span> Finanzas</div>
+    <div class="nav-item" data-view="estadisticas" onclick="mostrarVista('estadisticas')"><span class="ic">◆</span> Estadísticas</div>
     <div class="nav-item" data-view="inscripciones" onclick="mostrarVista('inscripciones')"><span class="ic">◆</span> Inscripciones <span id="badge-insc" class="badge badge-pend hidden" style="margin-left:6px;">0</span></div>
     <div class="nav-item" data-view="configuracion" onclick="mostrarVista('configuracion')"><span class="ic">◆</span> Configuración</div>
     <div class="sidebar-bottom">
@@ -304,6 +312,24 @@ if(new URLSearchParams(window.location.search).get('inscripcion') === '1'){
           <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th></th></tr></thead>
           <tbody></tbody>
         </table></div>
+      </div>
+    </div>
+
+    <!-- ESTADÍSTICAS -->
+    <div class="view" id="view-estadisticas">
+      <div class="topbar"><h1>Estadísticas</h1></div>
+      <div class="muted" style="margin-bottom:18px;">Se arma sola a partir de los socios, pagos y altas que ya tenés cargados — no hace falta completar nada acá.</div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="n" id="est-antiguedad">0</div><div class="l">Antigüedad promedio (meses)</div></div>
+        <div class="stat-card"><div class="n" id="est-crecimiento">—</div><div class="l">Cobros vs mes anterior</div></div>
+      </div>
+      <div class="card">
+        <h3>Cobros de los últimos 6 meses</h3>
+        <div id="est-chart-cobros" class="bars-chart"></div>
+      </div>
+      <div class="card">
+        <h3>Altas de socios (últimos 6 meses)</h3>
+        <div id="est-chart-altas" class="bars-chart"></div>
       </div>
     </div>
 
@@ -1144,6 +1170,83 @@ function renderDashboard(){
   const filas = Object.entries(porActividad).map(([k,v])=>`<tr><td>${k}</td><td>${v} socios</td></tr>`).join("")
     || `<tr><td colspan="2" class="muted">Sin datos todavía.</td></tr>`;
   document.getElementById('dash-actividades').innerHTML = `<table><thead><tr><th>Actividad</th><th>Socios</th></tr></thead><tbody>${filas}</tbody></table>`;
+}
+
+/* ══════════ ESTADÍSTICAS (se arma sola a partir de lo ya cargado) ══════════ */
+function ultimosMeses(n){
+  const arr = [];
+  const base = new Date();
+  for(let i=n-1;i>=0;i--){
+    const dt = new Date(base.getFullYear(), base.getMonth()-i, 1);
+    const id = dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,'0');
+    let label = dt.toLocaleDateString('es-AR',{month:'short'}).replace('.','');
+    label = label.charAt(0).toUpperCase()+label.slice(1);
+    arr.push({id, label});
+  }
+  return arr;
+}
+
+function renderEstadisticas(){
+  const meses = ultimosMeses(6);
+  const mesActual = mesActualId();
+
+  // Cobros y altas por mes (recorriendo lo que ya está guardado en cada socio)
+  const cobrosPorMes = {}; meses.forEach(m=>cobrosPorMes[m.id]=0);
+  const altasPorMes = {}; meses.forEach(m=>altasPorMes[m.id]=0);
+  sociosCache.forEach(s=>{
+    if(s.pagos){
+      Object.keys(s.pagos).forEach(mesId=>{
+        if(cobrosPorMes[mesId]!==undefined) cobrosPorMes[mesId] += Number(s.pagos[mesId].monto)||0;
+      });
+    }
+    if(s.fechaAlta){
+      const fecha = s.fechaAlta.toDate ? s.fechaAlta.toDate() : new Date(s.fechaAlta);
+      const mesId = fecha.getFullYear()+"-"+String(fecha.getMonth()+1).padStart(2,'0');
+      if(altasPorMes[mesId]!==undefined) altasPorMes[mesId]++;
+    }
+  });
+
+  const maxCobro = Math.max(1, ...Object.values(cobrosPorMes));
+  document.getElementById('est-chart-cobros').innerHTML = meses.map(m=>{
+    const v = cobrosPorMes[m.id];
+    const h = Math.round((v/maxCobro)*145)+4;
+    return `<div class="bar-col"><div class="bar-val">${v>0?formatMoneda(v):''}</div><div class="bar" style="height:${h}px;"></div><div class="bar-label">${m.label}</div></div>`;
+  }).join("");
+
+  const maxAltas = Math.max(1, ...Object.values(altasPorMes));
+  document.getElementById('est-chart-altas').innerHTML = meses.map(m=>{
+    const v = altasPorMes[m.id];
+    const h = Math.round((v/maxAltas)*145)+4;
+    return `<div class="bar-col"><div class="bar-val">${v>0?v:''}</div><div class="bar" style="height:${h}px;"></div><div class="bar-label">${m.label}</div></div>`;
+  }).join("");
+
+  // Antigüedad promedio
+  const hoy = new Date();
+  const antiguedades = sociosCache.filter(s=>s.fechaAlta).map(s=>{
+    const fecha = s.fechaAlta.toDate ? s.fechaAlta.toDate() : new Date(s.fechaAlta);
+    return (hoy - fecha)/(1000*60*60*24*30);
+  });
+  document.getElementById('est-antiguedad').textContent = antiguedades.length
+    ? (antiguedades.reduce((a,b)=>a+b,0)/antiguedades.length).toFixed(1)
+    : "0";
+
+  // Variación de cobros vs el mes anterior
+  const idxActual = meses.findIndex(m=>m.id===mesActual);
+  const cobroActual = cobrosPorMes[mesActual]||0;
+  const mesAnteriorId = idxActual>0 ? meses[idxActual-1].id : null;
+  const cobroAnterior = mesAnteriorId ? (cobrosPorMes[mesAnteriorId]||0) : 0;
+  const elCrec = document.getElementById('est-crecimiento');
+  if(cobroAnterior>0){
+    const pct = Math.round(((cobroActual-cobroAnterior)/cobroAnterior)*100);
+    elCrec.textContent = (pct>=0?"+":"")+pct+"%";
+    elCrec.style.color = pct>=0 ? 'var(--success)' : 'var(--danger)';
+  } else {
+    elCrec.textContent = "—";
+    elCrec.style.color = 'var(--bordo)';
+  }
+  // Nota: "% afiliados UEC", "recaudación por actividad" y "métodos de pago" se sacaron
+  // a pedido, hasta que esos datos (tipo de socio, actividad por socio, medio de pago)
+  // estén cargados de forma consistente — por ahora mostrarían números engañosos.
 }
 
 /* ══════════ FORMULARIO PÚBLICO ══════════ */
