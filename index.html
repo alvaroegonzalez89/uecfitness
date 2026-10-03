@@ -318,7 +318,6 @@ if(new URLSearchParams(window.location.search).get('inscripcion') === '1'){
     <!-- ESTADÍSTICAS -->
     <div class="view" id="view-estadisticas">
       <div class="topbar"><h1>Estadísticas</h1></div>
-      <div class="muted" style="margin-bottom:18px;">Se arma sola a partir de los socios, pagos y altas que ya tenés cargados — no hace falta completar nada acá.</div>
       <div class="stats-grid">
         <div class="stat-card"><div class="n" id="est-antiguedad">0</div><div class="l">Antigüedad promedio (meses)</div></div>
         <div class="stat-card"><div class="n" id="est-crecimiento">—</div><div class="l">Cobros vs mes anterior</div></div>
@@ -636,14 +635,14 @@ function mostrarVista(v){
   if(v==='cuotas') renderCuotas();
   if(v==='socios') renderSocios();
   if(v==='finanzas') renderFinanzas();
+  if(v==='estadisticas') renderEstadisticas();
   if(v==='dashboard') renderDashboard();
 }
 
 /* ══════════ INICIALIZACIÓN PANEL ══════════ */
 async function inicializarPanel(){
-  await cargarConfiguracion();
-  await cargarSocios();
-  await cargarMovimientos();
+  await Promise.all([cargarConfiguracion(), cargarSocios(), cargarMovimientos()]);
+  renderSocios(); // por si corrió antes de que CONFIG estuviera listo, repinta ya con los nombres de actividad correctos
   escucharInscripciones();
   document.getElementById('mes-cuotas').value = mesActualId();
   document.getElementById('mes-finanzas').value = mesActualId();
@@ -770,6 +769,7 @@ function renderSocios(){
 }
 
 function nombreActividad(id){
+  if(!CONFIG) return id || "";
   if(id==='bodyfitness') return CONFIG.bodyFitness.nombre;
   const p = CONFIG.planes.find(p=>p.id===id);
   return p ? p.nombre : id;
