@@ -981,30 +981,43 @@ function generarComprobantePDF(socioId, mesId){
   // Logo
   doc.addImage(LOGO_BASE64, 'JPEG', 14, 12, 22, 22);
 
-  // Nombre del gimnasio y datos de contacto
+  // Nombre del gimnasio y datos de contacto — todo calculado en base a cuántas líneas
+  // ocupe el nombre, para que nunca se pise con la línea de abajo (nombres largos parten en 2 líneas).
+  const textoX = 40;
+  const textoW = pageW - 54;
   doc.setTextColor(...bordo);
   doc.setFont('helvetica','bold');
   doc.setFontSize(13);
-  doc.text(CONFIG.nombreGimnasio, 40, 18, {maxWidth: pageW-54});
+  const lineasNombre = doc.splitTextToSize(CONFIG.nombreGimnasio, textoW);
+  doc.text(lineasNombre, textoX, 17);
+  let yHeader = 17 + lineasNombre.length*5.3 + 2;
+
   doc.setFont('helvetica','normal');
   doc.setFontSize(8.5);
   doc.setTextColor(...gris);
-  doc.text(`Tel: ${CONFIG.telefono}  |  Alias: ${CONFIG.alias}`, 40, 24);
-  if(CONFIG.direcciones && CONFIG.direcciones.length) doc.text(CONFIG.direcciones.join(" / "), 40, 29, {maxWidth: pageW-54});
+  doc.text(`Tel: ${CONFIG.telefono}  |  Alias: ${CONFIG.alias}`, textoX, yHeader);
+  yHeader += 5;
 
-  // Línea separadora
+  if(CONFIG.direcciones && CONFIG.direcciones.length){
+    const lineasDir = doc.splitTextToSize(CONFIG.direcciones.join(" / "), textoW);
+    doc.text(lineasDir, textoX, yHeader);
+    yHeader += lineasDir.length*4.6;
+  }
+
+  // Línea separadora (se corre para abajo si el encabezado ocupó más lugar)
+  const ySep = Math.max(yHeader+6, 38);
   doc.setDrawColor(...bordo2);
   doc.setLineWidth(0.6);
-  doc.line(14, 38, pageW-14, 38);
+  doc.line(14, ySep, pageW-14, ySep);
 
   // Título
   doc.setFont('helvetica','bold');
   doc.setFontSize(14);
   doc.setTextColor(...bordo);
-  doc.text("COMPROBANTE DE PAGO", pageW/2, 48, {align:'center'});
+  doc.text("COMPROBANTE DE PAGO", pageW/2, ySep+10, {align:'center'});
 
   // Datos del pago
-  let y = 60;
+  let y = ySep+22;
   const campo = (label, valor) => {
     doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...gris);
     doc.text(label, 14, y);
