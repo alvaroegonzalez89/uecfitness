@@ -277,6 +277,7 @@ if(new URLSearchParams(window.location.search).get('inscripcion') === '1'){
           <option value="">Todos los estados</option>
           <option value="pagado">Pagado</option>
           <option value="pendiente">Pendiente</option>
+          <option value="noviene">No viene este mes</option>
         </select>
         <select class="fi" id="orden-cuotas" style="max-width:180px" onchange="renderCuotas()">
           <option value="nombre-asc">Apellido (A-Z)</option>
@@ -764,13 +765,17 @@ function renderSocios(){
       <td>${actNombre} <span class="chip">${labelFrecuencia(s.frecuencia)}</span></td>
       <td><span class="badge ${s.tipoSocio==='afiliado'?'badge-af':'badge-part'}">${s.tipoSocio==='afiliado'?'Afiliado UEC':'Particular'}</span></td>
       <td>${formatMoneda(s.precioMensual)}</td>
-      <td>${pagoMes ? '<span class="badge badge-ok">Pagado</span>' : '<span class="badge badge-pend">Pendiente</span>'}</td>
+      <td>${pagoMes ? '<span class="badge badge-ok">Pagado</span>' : (ausenteEnMes(s, mesId) ? '<span class="badge badge-part">No viene este mes</span>' : '<span class="badge badge-pend">Pendiente</span>')}</td>
       <td style="white-space:nowrap;">
         <button class="btn btn-outline btn-sm" onclick="abrirModalSocio('${s.id}')">Editar</button>
       </td>
     </tr>`;
   }).join("") || `<tr><td colspan="7" class="muted">No hay socios que coincidan.</td></tr>`;
 }
+
+// "Este mes no voy": el socio avisó que no viene ese mes. Se guarda aparte de los pagos
+// (campo ausencias.{YYYY-MM}) para que no se confunda con un pago ni sume a ningún total.
+function ausenteEnMes(s, mesId){ return !!(s.ausencias && s.ausencias[mesId]); }
 
 function nombreActividad(id){
   if(!CONFIG) return id || "";
@@ -899,7 +904,11 @@ function obtenerListaCuotas(){
     const matchTexto = !buscar || nombreCompleto(s).toLowerCase().includes(buscar) || (s.dni||"").includes(buscar);
     const matchAct = !filtroAct || s.actividadId===filtroAct;
     const pagado = !!(s.pagos && s.pagos[mesId]);
-    const matchEstado = !filtroEstado || (filtroEstado==='pagado'?pagado:!pagado);
+    const ausente = !pagado && ausenteEnMes(s, mesId);
+    const matchEstado = !filtroEstado
+      || (filtroEstado==='pagado' && pagado)
+      || (filtroEstado==='noviene' && ausente)
+      || (filtroEstado==='pendiente' && !pagado && !ausente);
     return matchTexto && matchAct && matchEstado;
   });
   lista.sort((a,b)=>{
@@ -915,16 +924,19 @@ function renderCuotas(){
   const tbody = document.querySelector('#tabla-cuotas tbody');
   tbody.innerHTML = lista.map(s=>{
     const pago = s.pagos && s.pagos[mesId];
+    const ausente = !pago && ausenteEnMes(s, mesId);
     const bloqueado = mesId < mesActualId(); // meses anteriores bloqueados para editar si ya se registró
     return `<tr>
       <td>${nombreCompleto(s)}</td>
       <td>${nombreActividad(s.actividadId)}</td>
       <td>${pago ? formatMoneda(pago.monto) + ((mesId===mesActualId() && Number(pago.monto)!==Number(s.precioMensual)) ? ` <span class="chip">cuota: ${formatMoneda(s.precioMensual)}</span>` : '') : formatMoneda(s.precioMensual)}</td>
-      <td>${pago ? `<span class="badge badge-ok">Pagado (${pago.medio})</span>` : '<span class="badge badge-pend">Pendiente</span>'}</td>
+      <td>${pago ? `<span class="badge badge-ok">Pagado (${pago.medio})</span>` : (ausente ? '<span class="badge badge-part">No viene este mes</span>' : '<span class="badge badge-pend">Pendiente</span>')}</td>
       <td style="white-space:nowrap;display:flex;gap:6px;">
         ${pago
           ? `<button class="btn btn-outline btn-sm" onclick="enviarComprobante('${s.id}','${mesId}')">WhatsApp</button><button class="btn btn-outline btn-sm" onclick="generarComprobantePDF('${s.id}','${mesId}')">Comprobante PDF</button>${bloqueado?'<span class="chip">🔒 mes cerrado</span>':`<button class="btn btn-outline btn-sm" onclick="abrirModalPago('${s.id}','${mesId}')">Editar</button>`}`
-          : `<button class="btn btn-success btn-sm" onclick="abrirModalPago('${s.id}','${mesId}')">Registrar pago</button>`}
+          : `<button class="btn btn-success btn-sm" onclick="abrirModalPago('${s.id}','${mesId}')">Registrar pago</button>${ausente
+              ? `<button class="btn btn-outline btn-sm" onclick="deshacerNoVoy('${s.id}','${mesId}')">Deshacer</button>`
+              : `<button class="btn btn-outline btn-sm" onclick="marcarNoVoy('${s.id}','${mesId}')">Este mes no voy</button>`}`}
       </td>
     </tr>`;
   }).join("") || `<tr><td colspan="5" class="muted">No hay socios que coincidan.</td></tr>`;
@@ -946,17 +958,51 @@ async function confirmarPago(){
   const mesId = document.getElementById('mp-mes').value;
   const monto = Number(document.getElementById('mp-monto').value);
   const medio = document.getElementById('mp-medio').value;
-  const campo = "pagos." + mesId;
-  await db.collection('socios').doc(socioId).set({
-    pagos: { [mesId]: { monto, medio, fecha: new Date().toISOString() } }
-  }, {merge:true});
   const s = sociosCache.find(x=>x.id===socioId);
+  const payload = { pagos: { [mesId]: { monto, medio, fecha: new Date().toISOString() } } };
+  // Si estaba marcado "este mes no voy" y igual pagó, se quita esa marca.
+  if(ausenteEnMes(s, mesId)) payload.ausencias = { [mesId]: firebase.firestore.FieldValue.delete() };
+  await db.collection('socios').doc(socioId).set(payload, {merge:true});
   s.pagos = s.pagos || {};
   s.pagos[mesId] = { monto, medio, fecha: new Date().toISOString() };
+  if(s.ausencias) delete s.ausencias[mesId];
   cerrarModal('modal-pago');
   renderCuotas();
   renderDashboard();
   toast("Pago registrado ✓");
+}
+
+async function marcarNoVoy(socioId, mesId){
+  const s = sociosCache.find(x=>x.id===socioId);
+  const [anio, mes] = mesId.split("-");
+  if(!confirm(`¿Marcar que ${nombreCompleto(s)} no viene en ${NOMBRES_MESES[Number(mes)-1]} ${anio}? Deja de figurar como pendiente.`)) return;
+  try{
+    await db.collection('socios').doc(socioId).set({ ausencias: { [mesId]: true } }, {merge:true});
+  }catch(err){
+    console.error(err);
+    toast("No se pudo guardar, intentá de nuevo");
+    return;
+  }
+  s.ausencias = s.ausencias || {};
+  s.ausencias[mesId] = true;
+  renderCuotas();
+  renderDashboard();
+  toast("Listo, ya no figura como pendiente ✓");
+}
+
+async function deshacerNoVoy(socioId, mesId){
+  const s = sociosCache.find(x=>x.id===socioId);
+  try{
+    await db.collection('socios').doc(socioId).set({ ausencias: { [mesId]: firebase.firestore.FieldValue.delete() } }, {merge:true});
+  }catch(err){
+    console.error(err);
+    toast("No se pudo guardar, intentá de nuevo");
+    return;
+  }
+  if(s.ausencias) delete s.ausencias[mesId];
+  renderCuotas();
+  renderDashboard();
+  toast("Vuelve a figurar como pendiente ✓");
 }
 
 const NOMBRES_MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -1054,7 +1100,7 @@ function generarComprobantePDF(socioId, mesId){
 
 function abrirRecordatorioMasivo(){
   const mesId = document.getElementById('mes-cuotas').value || mesActualId();
-  const pendientes = sociosCache.filter(s=>s.activo!==false && !(s.pagos && s.pagos[mesId]));
+  const pendientes = sociosCache.filter(s=>s.activo!==false && !(s.pagos && s.pagos[mesId]) && !ausenteEnMes(s, mesId));
   const cont = document.getElementById('lista-recordatorios');
   if(!pendientes.length){
     cont.innerHTML = `<p class="muted">No hay pagos pendientes para este mes 🎉</p>`;
@@ -1082,7 +1128,7 @@ function exportarCuotasExcel(){
       "Actividad": nombreActividad(s.actividadId),
       "Frecuencia": labelFrecuencia(s.frecuencia),
       "Monto de cuota": pago ? Number(pago.monto) : Number(s.precioMensual),
-      "Estado": pago ? `Pagado (${pago.medio})` : "Pendiente"
+      "Estado": pago ? `Pagado (${pago.medio})` : (ausenteEnMes(s, mesId) ? "No viene este mes" : "Pendiente")
     };
   });
   const ws = XLSX.utils.json_to_sheet(filas);
@@ -1274,7 +1320,7 @@ function renderDashboard(){
   activos.forEach(s=>{
     const pago = s.pagos && s.pagos[mesId];
     if(pago) cobrado += Number(pago.monto)||0;
-    else pendientes++;
+    else if(!ausenteEnMes(s, mesId)) pendientes++;
   });
   document.getElementById('stat-cobrado').textContent = formatMoneda(cobrado);
   document.getElementById('stat-pendientes').textContent = pendientes;
